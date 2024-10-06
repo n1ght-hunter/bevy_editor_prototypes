@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "bevy_editor_panes/*", "bevy_widgets/*"]
+members = ["crates/*", "bevy_editor_panes/*", "bevy_widgets/*", "crates/bevy_deep_merge/derive"]
 
 [workspace.lints.clippy]
 doc_markdown = "warn"
@@ -31,4 +31,4 @@ serde = { version = "1", features = ["derive"] }
 
 
 # Local crates
-bevy_deep_merge_derive = { path = "crates/bevy_deep_merge_derive" }
+bevy_deep_merge_derive = { path = "crates/bevy_deep_merge/derive" }
