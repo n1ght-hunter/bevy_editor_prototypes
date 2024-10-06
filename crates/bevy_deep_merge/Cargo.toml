@@ -1,0 +1,10 @@
+[package]
+name = "bevy_deep_merge"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy_deep_merge_derive.workspace = true
+
+[lints]
+workspace = true
