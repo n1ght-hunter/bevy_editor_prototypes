@@ -5,7 +5,9 @@ use bevy::reflect::{
     Reflect, ReflectMut, ReflectRef, Set, Struct, Tuple, TupleStruct, TypeData,
 };
 
-fn deep_merge<T: Reflect + Default>(a: T, b: T) -> T {
+
+/// Deep merge two instances of a type that implements `Reflect` and `Default`.
+pub fn deep_merge<T: Reflect + Default>(a: T, b: T) -> T {
     // Create a new instance of T
     let mut result = T::default();
 
