@@ -1,10 +1,8 @@
 //! Editor camera example with an expanded control scheme fit for CAD software.
 
 use bevy::{
-    core_pipeline::{
-        bloom::Bloom,
-        experimental::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing},
-    },
+    anti_aliasing::taa::{TemporalAntiAliasPlugin, TemporalAntiAliasing},
+    core_pipeline::bloom::Bloom,
     pbr::ScreenSpaceAmbientOcclusion,
     prelude::*,
     render::camera::TemporalJitter,
@@ -67,7 +65,7 @@ fn projection_specific_render_config(
     mut commands: Commands,
     mut cam: Query<(Entity, &Projection, &mut Msaa), With<EditorCam>>,
 ) {
-    let (entity, proj, mut msaa) = cam.single_mut();
+    let (entity, proj, mut msaa) = cam.single_mut().unwrap();
     match proj {
         Projection::Perspective(_) => {
             *msaa = Msaa::Off;
@@ -100,9 +98,9 @@ fn toggle_projection(
         } else {
             Projection::Perspective(PerspectiveProjection::default())
         };
-        dolly.send(DollyZoomTrigger {
+        dolly.write(DollyZoomTrigger {
             target_projection,
-            camera: cam.single(),
+            camera: cam.single().unwrap(),
         });
     }
 }
@@ -113,7 +111,7 @@ fn toggle_constraint(
     mut look_to: EventWriter<LookToTrigger>,
 ) {
     if keys.just_pressed(KeyCode::KeyC) {
-        let (entity, transform, mut editor) = cam.single_mut();
+        let (entity, transform, mut editor) = cam.single_mut().unwrap();
         match editor.orbit_constraint {
             OrbitConstraint::Fixed { .. } => editor.orbit_constraint = OrbitConstraint::Free,
             OrbitConstraint::Free => {
@@ -122,7 +120,7 @@ fn toggle_constraint(
                     can_pass_tdc: false,
                 };
 
-                look_to.send(LookToTrigger::auto_snap_up_direction(
+                look_to.write(LookToTrigger::auto_snap_up_direction(
                     transform.forward(),
                     entity,
                     transform,
@@ -138,9 +136,9 @@ fn switch_direction(
     mut look_to: EventWriter<LookToTrigger>,
     cam: Query<(Entity, &Transform, &EditorCam)>,
 ) {
-    let (camera, transform, editor) = cam.single();
+    let (camera, transform, editor) = cam.single().unwrap();
     if keys.just_pressed(KeyCode::Digit1) {
-        look_to.send(LookToTrigger::auto_snap_up_direction(
+        look_to.write(LookToTrigger::auto_snap_up_direction(
             Dir3::X,
             camera,
             transform,
@@ -148,7 +146,7 @@ fn switch_direction(
         ));
     }
     if keys.just_pressed(KeyCode::Digit2) {
-        look_to.send(LookToTrigger::auto_snap_up_direction(
+        look_to.write(LookToTrigger::auto_snap_up_direction(
             Dir3::Z,
             camera,
             transform,
@@ -156,7 +154,7 @@ fn switch_direction(
         ));
     }
     if keys.just_pressed(KeyCode::Digit3) {
-        look_to.send(LookToTrigger::auto_snap_up_direction(
+        look_to.write(LookToTrigger::auto_snap_up_direction(
             Dir3::NEG_X,
             camera,
             transform,
@@ -164,7 +162,7 @@ fn switch_direction(
         ));
     }
     if keys.just_pressed(KeyCode::Digit4) {
-        look_to.send(LookToTrigger::auto_snap_up_direction(
+        look_to.write(LookToTrigger::auto_snap_up_direction(
             Dir3::NEG_Z,
             camera,
             transform,
@@ -172,7 +170,7 @@ fn switch_direction(
         ));
     }
     if keys.just_pressed(KeyCode::Digit5) {
-        look_to.send(LookToTrigger::auto_snap_up_direction(
+        look_to.write(LookToTrigger::auto_snap_up_direction(
             Dir3::Y,
             camera,
             transform,
@@ -180,7 +178,7 @@ fn switch_direction(
         ));
     }
     if keys.just_pressed(KeyCode::Digit6) {
-        look_to.send(LookToTrigger::auto_snap_up_direction(
+        look_to.write(LookToTrigger::auto_snap_up_direction(
             Dir3::NEG_Y,
             camera,
             transform,

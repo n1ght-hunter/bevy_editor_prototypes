@@ -1,8 +1,7 @@
 //! Editor camera example with a city map to traverse.
 
 use bevy::{
-    color::palettes,
-    core_pipeline::{bloom::Bloom, experimental::taa::TemporalAntiAliasing},
+    anti_aliasing::taa::TemporalAntiAliasing, color::palettes, core_pipeline::bloom::Bloom,
     pbr::ScreenSpaceAmbientOcclusion,
 };
 use bevy::{prelude::*, render::camera::TemporalJitter};
@@ -69,18 +68,19 @@ fn spawn_buildings(
     let w = half_width as isize;
     for x in -w..=w {
         for z in -w..=w {
-            let x = x as f32 + rng.gen::<f32>() - 0.5;
-            let z = z as f32 + rng.gen::<f32>() - 0.5;
-            let y = rng.gen::<f32>() * rng.gen::<f32>() * rng.gen::<f32>() * rng.gen::<f32>();
+            let x = x as f32 + rng.r#gen::<f32>() - 0.5;
+            let z = z as f32 + rng.r#gen::<f32>() - 0.5;
+            let y =
+                rng.r#gen::<f32>() * rng.r#gen::<f32>() * rng.r#gen::<f32>() * rng.r#gen::<f32>();
             let y_scale = 1.02f32.powf(100.0 * y);
 
             commands.spawn((
                 Mesh3d(mesh.clone()),
                 MeshMaterial3d(material[rng.gen_range(0..material.len())].clone()),
                 Transform::from_xyz(x, y_scale / 2.0 - 5.0, z).with_scale(Vec3::new(
-                    (rng.gen::<f32>() + 0.5) * 0.3,
+                    (rng.r#gen::<f32>() + 0.5) * 0.3,
                     y_scale,
-                    (rng.gen::<f32>() + 0.5) * 0.3,
+                    (rng.r#gen::<f32>() + 0.5) * 0.3,
                 )),
             ));
         }
@@ -100,9 +100,9 @@ fn toggle_projection(
         } else {
             Projection::Perspective(PerspectiveProjection::default())
         };
-        dolly.send(DollyZoomTrigger {
+        dolly.write(DollyZoomTrigger {
             target_projection,
-            camera: cam.single(),
+            camera: cam.single().unwrap(),
         });
     }
 }
@@ -111,7 +111,7 @@ fn projection_specific_render_config(
     mut commands: Commands,
     mut cam: Query<(Entity, &Projection, &mut Msaa), With<EditorCam>>,
 ) {
-    let (entity, proj, mut msaa) = cam.single_mut();
+    let (entity, proj, mut msaa) = cam.single_mut().unwrap();
     match proj {
         Projection::Perspective(_) => {
             *msaa = Msaa::Off;

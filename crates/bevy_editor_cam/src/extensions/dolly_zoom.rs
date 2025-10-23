@@ -8,14 +8,14 @@ use std::time::Duration;
 use bevy::app::prelude::*;
 use bevy::ecs::prelude::*;
 use bevy::math::prelude::*;
-use bevy::platform_support::collections::HashMap;
-use bevy::platform_support::time::Instant;
+use bevy::platform::collections::HashMap;
+use bevy::platform::time::Instant;
 use bevy::reflect::prelude::*;
 use bevy::render::{camera::ScalingMode, prelude::*};
 use bevy::transform::prelude::*;
 use bevy::window::RequestRedraw;
 
-use crate::prelude::{motion::CurrentMotion, EditorCam, EnabledMotion};
+use crate::prelude::{EditorCam, EnabledMotion, motion::CurrentMotion};
 
 /// See the [module](self) docs.
 pub struct DollyZoomPlugin;
@@ -28,8 +28,7 @@ impl Plugin for DollyZoomPlugin {
                 PreUpdate,
                 DollyZoom::update.before(EditorCam::update_camera_positions),
             )
-            .add_systems(Last, DollyZoomTrigger::receive) // This mutates camera components, so we want to be sure it runs *after* rendering has happened. We place it in Last to ensure that we wake the next frame if needed. If we run this in PostUpdate, this can result in rendering artifacts because this will mutate projections right before rendering.
-            .register_type::<DollyZoom>();
+            .add_systems(Last, DollyZoomTrigger::receive); // This mutates camera components, so we want to be sure it runs *after* rendering has happened. We place it in Last to ensure that we wake the next frame if needed. If we run this in PostUpdate, this can result in rendering artifacts because this will mutate projections right before rendering.
     }
 }
 
@@ -37,7 +36,7 @@ impl Plugin for DollyZoomPlugin {
 const ZERO_FOV: f64 = 1e-3;
 
 /// Triggers a dolly zoom on the specified camera.
-#[derive(Debug, Event)]
+#[derive(Debug, Event, BufferedEvent)]
 pub struct DollyZoomTrigger {
     /// The new projection.
     pub target_projection: Projection,
@@ -58,7 +57,7 @@ impl DollyZoomTrigger {
             else {
                 continue;
             };
-            redraw.send(RequestRedraw);
+            redraw.write(RequestRedraw);
             let (fov_start, triangle_base) = match &*proj {
                 Projection::Perspective(perspective) => {
                     if let Projection::Perspective(PerspectiveProjection {
@@ -158,7 +157,7 @@ impl Default for DollyZoom {
     fn default() -> Self {
         Self {
             animation_duration: Duration::from_millis(400),
-            animation_curve: CubicSegment::new_bezier((0.25, 0.0), (0.25, 1.0)),
+            animation_curve: CubicSegment::new_bezier_easing((0.25, 0.0), (0.25, 1.0)),
             map: Default::default(),
         }
     }
@@ -236,7 +235,7 @@ impl DollyZoom {
                 controller.enabled_motion = initial_enabled.clone();
                 *complete = true;
             }
-            redraw.send(RequestRedraw);
+            redraw.write(RequestRedraw);
         }
         state.map.retain(|_, v| !v.complete);
     }

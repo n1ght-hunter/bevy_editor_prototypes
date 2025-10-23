@@ -1,11 +1,13 @@
 //! 2d Viewport for Bevy
 use bevy::{
+    feathers::theme::ThemedText,
     prelude::*,
     render::{
         camera::RenderTarget,
         render_resource::{Extent3d, TextureFormat, TextureUsages},
         view::RenderLayers,
     },
+    scene2::{CommandsSpawnScene, bsn, on},
     ui::ui_layout_system,
 };
 use bevy_editor_camera::{EditorCamera2d, EditorCamera2dPlugin};
@@ -43,7 +45,7 @@ impl Plugin for Viewport2dPanePlugin {
                 update_render_target_size.after(ui_layout_system),
             )
             .add_observer(
-                |trigger: Trigger<OnRemove, Bevy2dViewport>,
+                |trigger: On<Remove, Bevy2dViewport>,
                  mut commands: Commands,
                  query: Query<&Bevy2dViewport>| {
                     // Despawn the viewport camera
@@ -87,20 +89,8 @@ fn on_pane_creation(
 
     let image_handle = images.add(image);
 
-    let image_id = commands
-        .spawn((
-            ImageNode::new(image_handle.clone()),
-            Node {
-                position_type: PositionType::Absolute,
-                top: Val::ZERO,
-                bottom: Val::ZERO,
-                left: Val::ZERO,
-                right: Val::ZERO,
-                ..default()
-            },
-            ChildOf(structure.content),
-        ))
-        .id();
+    // Remove the existing structure
+    commands.entity(structure.area).despawn();
 
     let camera_id = commands
         .spawn((
@@ -110,7 +100,7 @@ fn on_pane_creation(
                 ..default()
             },
             Camera {
-                target: RenderTarget::Image(image_handle.into()),
+                target: RenderTarget::Image(image_handle.clone().into()),
                 clear_color: ClearColorConfig::Custom(theme.viewport.background_color),
                 ..default()
             },
@@ -119,18 +109,25 @@ fn on_pane_creation(
         .id();
 
     commands
-        .entity(image_id)
-        .observe(
-            move |_trigger: Trigger<Pointer<Move>>, mut query: Query<&mut EditorCamera2d>| {
-                let mut editor_camera = query.get_mut(camera_id).unwrap();
-                editor_camera.enabled = true;
-            },
-        )
-        .observe(
-            move |_trigger: Trigger<Pointer<Out>>, mut query: Query<&mut EditorCamera2d>| {
-                query.get_mut(camera_id).unwrap().enabled = false;
-            },
-        );
+        .spawn_scene(bsn! {
+            :editor_pane [
+                :editor_pane_header [
+                    (Text("2D Viewport") ThemedText),
+                ],
+                :editor_pane_body [
+                    ImageNode::new(image_handle.clone())
+                    :fit_to_parent
+                    on(move |_trigger: On<Pointer<Move>>, mut query: Query<&mut EditorCamera2d>| {
+                        let mut editor_camera = query.get_mut(camera_id).unwrap();
+                        editor_camera.enabled = true;
+                    })
+                    on(move |_trigger: On<Pointer<Out>>, mut query: Query<&mut EditorCamera2d>| {
+                        query.get_mut(camera_id).unwrap().enabled = false;
+                    })
+                ],
+            ]
+        })
+        .insert(ChildOf(structure.root));
 
     commands
         .entity(structure.root)
@@ -143,16 +140,18 @@ fn update_render_target_size(
     content: Query<&PaneContentNode>,
     children_query: Query<&Children>,
     pos_query: Query<
-        (&ComputedNode, &GlobalTransform),
-        Or<(Changed<ComputedNode>, Changed<GlobalTransform>)>,
+        (&ComputedNode, &UiGlobalTransform),
+        Or<(Changed<ComputedNode>, Changed<UiGlobalTransform>)>,
     >,
     mut images: ResMut<Assets<Image>>,
 ) {
     for (pane_root, viewport) in &query {
-        let content_node_id = children_query
+        let Some(content_node_id) = children_query
             .iter_descendants(pane_root)
             .find(|e| content.contains(*e))
-            .unwrap();
+        else {
+            continue;
+        };
 
         let Ok((computed_node, global_transform)) = pos_query.get(content_node_id) else {
             continue;
@@ -160,7 +159,7 @@ fn update_render_target_size(
         // TODO Convert to physical pixels
         let content_node_size = computed_node.size();
 
-        let node_position = global_transform.translation().xy();
+        let node_position = global_transform.translation;
         let rect = Rect::from_center_size(node_position, computed_node.size());
 
         let (camera, mut editor_camera) = camera_query.get_mut(viewport.camera_id).unwrap();

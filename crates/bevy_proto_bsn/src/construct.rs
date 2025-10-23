@@ -2,9 +2,9 @@ use alloc::borrow::Cow;
 use bevy::{
     ecs::{
         bundle::{BundleFromComponents, DynamicBundle},
-        component::{ComponentId, Components, RequiredComponents, StorageType},
+        component::{ComponentId, Components, ComponentsRegistrator, StorageType},
         system::EntityCommands,
-        world::error::EntityFetchError,
+        world::error::EntityMutableFetchError,
     },
     prelude::*,
     ptr::OwningPtr,
@@ -20,7 +20,7 @@ pub enum ConstructError {
     Custom(&'static str),
     /// Missing entity
     #[error(transparent)]
-    MissingEntity(#[from] EntityFetchError),
+    MissingEntity(#[from] EntityMutableFetchError),
     /// Missing resource
     #[error("Resource {type_name} does not exist")]
     MissingResource {
@@ -130,13 +130,16 @@ impl<'a> ConstructContext<'a> {
 /// Construct extension
 pub trait ConstructEntityCommandsExt {
     /// Construct a bundle using the given props and insert it onto the entity.
-    fn construct<T: Construct + Bundle>(&mut self, props: impl Into<T::Props>) -> EntityCommands
+    fn construct<T: Construct + Bundle>(
+        &mut self,
+        props: impl Into<T::Props>,
+    ) -> EntityCommands<'_>
     where
         <T as Construct>::Props: Send;
 }
 
 impl ConstructEntityCommandsExt for EntityCommands<'_> {
-    fn construct<T: Construct + Bundle>(&mut self, props: impl Into<T::Props>) -> EntityCommands
+    fn construct<T: Construct + Bundle>(&mut self, props: impl Into<T::Props>) -> EntityCommands<'_>
     where
         <T as Construct>::Props: Send,
     {
@@ -147,7 +150,7 @@ impl ConstructEntityCommandsExt for EntityCommands<'_> {
                 let mut context = ConstructContext { id, world };
                 match T::construct(&mut context, props) {
                     Ok(c) => world.entity_mut(id).insert(c),
-                    Err(e) => panic!("construction failed: {}", e),
+                    Err(e) => panic!("construction failed: {e}"),
                 };
             });
         });
@@ -189,15 +192,8 @@ all_tuples!(
 #[allow(unsafe_code)]
 /// SAFETY: This just passes through to the inner [`Bundle`] implementation.
 unsafe impl<B: Bundle> Bundle for ConstructTuple<B> {
-    fn component_ids(components: &mut Components, ids: &mut impl FnMut(ComponentId)) {
+    fn component_ids(components: &mut ComponentsRegistrator, ids: &mut impl FnMut(ComponentId)) {
         B::component_ids(components, ids);
-    }
-
-    fn register_required_components(
-        components: &mut Components,
-        required_components: &mut RequiredComponents,
-    ) {
-        B::register_required_components(components, required_components);
     }
 
     fn get_component_ids(components: &Components, ids: &mut impl FnMut(Option<ComponentId>)) {

@@ -5,12 +5,13 @@
 use std::path::PathBuf;
 
 use bevy::{
+    ecs::schedule::common_conditions::any_with_component,
     prelude::*,
-    tasks::{block_on, futures_lite::future, IoTaskPool, Task},
+    tasks::{IoTaskPool, Task, block_on, futures_lite::future},
 };
 
 use bevy_editor::project::{
-    create_new_project, get_local_projects, set_project_list, templates::Templates, ProjectInfo,
+    ProjectInfo, create_new_project, get_local_projects, set_project_list, templates::Templates,
 };
 use bevy_editor_styles::{StylesPlugin, Theme};
 use bevy_footer_bar::{FooterBarPlugin, FooterBarSet};
@@ -23,11 +24,6 @@ mod ui;
 #[derive(Component)]
 struct CreateProjectTask(Task<std::io::Result<ProjectInfo>>);
 
-/// A utils to run a system only if the [`CreateProjectTask`] is running
-fn run_if_task_is_running(task_query: Query<Entity, With<CreateProjectTask>>) -> bool {
-    task_query.iter().count() > 0
-}
-
 /// Check on the status of the [`CreateProjectTask`] and handle the result when done
 fn poll_create_project_task(
     mut commands: Commands,
@@ -37,7 +33,7 @@ fn poll_create_project_task(
     asset_server: Res<AssetServer>,
     mut project_list: ResMut<ProjectInfoList>,
 ) {
-    let (task_entity, mut task) = task_query.single_mut();
+    let (task_entity, mut task) = task_query.single_mut().unwrap();
     if let Some(result) = block_on(future::poll_once(&mut task.0)) {
         match result {
             Ok(project_info) => {
@@ -49,7 +45,6 @@ fn poll_create_project_task(
                 let (project_list_entity, children) = query.iter().next().unwrap();
                 let plus_button_entity = children.last().unwrap();
 
-                commands.entity(*plus_button_entity).remove::<ChildOf>();
                 commands
                     .entity(project_list_entity)
                     .with_children(|builder| {
@@ -70,7 +65,7 @@ fn poll_create_project_task(
 /// Spawn a new [`CreateProjectTask`] to create a new project
 fn spawn_create_new_project_task(commands: &mut Commands, template: Templates, path: PathBuf) {
     let task = IoTaskPool::get().spawn(async move { create_new_project(template, path).await });
-    commands.spawn_empty().insert(CreateProjectTask(task));
+    commands.spawn(CreateProjectTask(task));
 }
 
 #[derive(Resource)]
@@ -94,7 +89,10 @@ fn main() {
         .add_systems(Startup, ui::setup)
         .add_systems(
             Update,
-            poll_create_project_task.run_if(run_if_task_is_running),
+            (
+                poll_create_project_task.run_if(any_with_component::<CreateProjectTask>),
+                ui::handle_notification_popups,
+            ),
         )
         .configure_sets(Startup, FooterBarSet.after(ui::setup))
         .run();

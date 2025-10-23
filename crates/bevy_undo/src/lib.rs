@@ -27,7 +27,7 @@
 //! use bevy::prelude::*;
 //! use bevy_undo::*;
 //! use std::sync::Arc;
-//! use bevy::platform_support::collections::HashMap;
+//! use bevy::platform::collections::HashMap;
 //!
 //! fn main() {
 //!     App::new()
@@ -42,10 +42,10 @@
 //!     mut undo_redo: EventWriter<UndoRedo>,
 //! ) {
 //!     if keys.just_pressed(KeyCode::KeyZ) {
-//!         undo_redo.send(UndoRedo::Undo);
+//!         undo_redo.write(UndoRedo::Undo);
 //!     }
 //!     if keys.just_pressed(KeyCode::KeyY) {
-//!         undo_redo.send(UndoRedo::Redo);
+//!         undo_redo.write(UndoRedo::Redo);
 //!     }
 //! }
 //!
@@ -59,7 +59,7 @@
 //!         transform.translation.x += 1.0;
 //!
 //!         // Register custom change
-//!         new_changes.send(NewChange::new(CustomTransformChange {
+//!         new_changes.write(NewChange::new(CustomTransformChange {
 //!             entity: entity,
 //!             old_transform,
 //!             new_transform: transform.clone(),
@@ -134,7 +134,7 @@
 #![allow(clippy::type_complexity)]
 use std::sync::Arc;
 
-use bevy::{platform_support::collections::HashMap, prelude::*};
+use bevy::{platform::collections::HashMap, prelude::*};
 
 const MAX_REFLECT_RECURSION: i32 = 10;
 const AUTO_UNDO_LATENCY: i32 = 2;
@@ -247,7 +247,7 @@ pub enum UndoSet {
 ///     }
 /// }
 /// ```
-#[derive(Event)]
+#[derive(Event, BufferedEvent)]
 pub struct UndoRedoApplied<T> {
     /// The entity that was modified.
     pub entity: Entity,
@@ -485,7 +485,7 @@ pub enum ChangeResult {
     SuccessWithRemap(Vec<(Entity, Entity)>),
 }
 /// Represents an undo or redo operation to be performed on the change chain.
-#[derive(Event)]
+#[derive(Event, BufferedEvent)]
 pub enum UndoRedo {
     /// Requests to undo the last change in the change chain.
     Undo,
@@ -495,7 +495,7 @@ pub enum UndoRedo {
 }
 
 /// Represents a new change to be added to the change chain.
-#[derive(Event, Clone)]
+#[derive(Event, BufferedEvent, Clone)]
 pub struct NewChange {
     /// The change to be added to the change chain, wrapped in an Arc for shared ownership.
     pub change: Arc<dyn EditorChange + Send + Sync>,
@@ -682,7 +682,7 @@ impl<T: Component + Reflect + FromReflect> EditorChange for ReflectedComponentCh
             .entity_mut(e)
             .insert(<T as FromReflect>::from_reflect(&self.old_value).unwrap())
             .insert(OneFrameUndoIgnore::default());
-        world.send_event(UndoRedoApplied::<T> {
+        world.write_event(UndoRedoApplied::<T> {
             entity: e,
             _phantom: std::marker::PhantomData,
         });
@@ -794,7 +794,7 @@ impl<T: Component + Reflect + FromReflect> EditorChange for ReflectedAddedCompon
             .resource_mut::<UndoIgnoreStorage>()
             .storage
             .insert(dst, OneFrameUndoIgnore::default());
-        world.send_event(UndoRedoApplied::<T> {
+        world.write_event(UndoRedoApplied::<T> {
             entity: dst,
             _phantom: std::marker::PhantomData,
         });
@@ -915,7 +915,7 @@ impl<T: Component + Reflect + FromReflect> EditorChange for ReflectedRemovedComp
             .entity_mut(dst)
             .insert(<T as FromReflect>::from_reflect(&self.old_value).unwrap())
             .insert(OneFrameUndoIgnore::default());
-        world.send_event(UndoRedoApplied::<T> {
+        world.write_event(UndoRedoApplied::<T> {
             entity: dst,
             _phantom: std::marker::PhantomData,
         });
@@ -1261,11 +1261,8 @@ fn apply_for_every_typed_field<D: Reflect + TypePath>(
                     );
                 }
             }
-            bevy::reflect::ReflectMut::Map(s) => {
-                for field_idx in 0..s.len() {
-                    let (_key, value) = s.get_at_mut(field_idx).unwrap();
-                    apply_for_every_typed_field(value, applyer, max_recursion - 1);
-                }
+            bevy::reflect::ReflectMut::Map(_s) => {
+                unimplemented!("See: https://github.com/bevyengine/bevy/pull/19802");
             }
             bevy::reflect::ReflectMut::Enum(s) => {
                 for field_idx in 0..s.field_len() {
@@ -1283,12 +1280,12 @@ fn apply_for_every_typed_field<D: Reflect + TypePath>(
                 let mut queue_to_replace = vec![];
                 for field in set.iter() {
                     if field.represents::<D>() {
-                        queue_to_replace.push(field.clone_value());
+                        queue_to_replace.push(field.reflect_clone().unwrap());
                     }
                 }
                 for mut field in queue_to_replace {
                     set.remove(field.as_ref());
-                    applyer(field.as_mut().try_downcast_mut().unwrap());
+                    applyer(field.as_mut().downcast_mut().unwrap());
                     set.insert_boxed(field);
                 }
             }
@@ -1313,7 +1310,7 @@ fn auto_remap_undo_redo<T: Component + Reflect>(
                         reflect.as_partial_reflect_mut(),
                         &|v| {
                             if let Some(e) = change_chain.entity_remap.get(v) {
-                                println!("remap {:?} to {:?}", v, e);
+                                println!("remap {v:?} to {e:?}");
                                 *v = *e;
                             }
                         },
@@ -1357,7 +1354,7 @@ fn auto_undo_add_init<T: Component + Clone>(
     for (e, data) in query.iter() {
         storage.storage.insert(e, data.clone());
         commands.entity(e).insert(OneFrameUndoIgnore::default());
-        new_changes.send(NewChange::new(AddedComponent {
+        new_changes.write(NewChange::new(AddedComponent {
             new_value: data.clone(),
             entity: e,
         }));
@@ -1380,7 +1377,7 @@ fn auto_undo_reflected_add_init<T: Component + Reflect + FromReflect>(
             .storage
             .insert(e, <T as FromReflect>::from_reflect(data).unwrap());
         commands.entity(e).insert(OneFrameUndoIgnore::default());
-        new_changes.send(NewChange {
+        new_changes.write(NewChange {
             change: Arc::new(ReflectedAddedComponent {
                 new_value: <T as FromReflect>::from_reflect(data).unwrap(),
                 entity: e,
@@ -1410,15 +1407,15 @@ fn auto_undo_remove_detect<T: Component + Clone>(
     ignore_storage: ResMut<UndoIgnoreStorage>,
 ) {
     for e in removed_query.read() {
-        if !ignore_storage.storage.contains_key(&e) {
-            if let Some(prev_value) = storage.storage.remove(&e) {
-                new_changes.send(NewChange {
-                    change: Arc::new(RemovedComponent {
-                        old_value: prev_value,
-                        entity: e,
-                    }),
-                });
-            }
+        if !ignore_storage.storage.contains_key(&e)
+            && let Some(prev_value) = storage.storage.remove(&e)
+        {
+            new_changes.write(NewChange {
+                change: Arc::new(RemovedComponent {
+                    old_value: prev_value,
+                    entity: e,
+                }),
+            });
         }
     }
 }
@@ -1431,15 +1428,15 @@ fn auto_undo_reflected_remove_detect<T: Component + Reflect + FromReflect>(
     ignore_storage: ResMut<UndoIgnoreStorage>,
 ) {
     for e in removed_query.read() {
-        if !ignore_storage.storage.contains_key(&e) {
-            if let Some(prev_value) = storage.storage.remove(&e) {
-                new_changes.send(NewChange {
-                    change: Arc::new(ReflectedRemovedComponent {
-                        old_value: prev_value,
-                        entity: e,
-                    }),
-                });
-            }
+        if !ignore_storage.storage.contains_key(&e)
+            && let Some(prev_value) = storage.storage.remove(&e)
+        {
+            new_changes.write(NewChange {
+                change: Arc::new(ReflectedRemovedComponent {
+                    old_value: prev_value,
+                    entity: e,
+                }),
+            });
         }
     }
 }
@@ -1466,7 +1463,7 @@ fn auto_undo_system<T: Component + Clone>(
             commands.entity(e).remove::<ChangedMarker<T>>();
 
             if let Some(prev_value) = storage.storage.get(&e) {
-                new_change.send(NewChange {
+                new_change.write(NewChange {
                     change: Arc::new(ComponentChange {
                         old_value: prev_value.clone(),
                         new_value: data.clone(),
@@ -1497,7 +1494,7 @@ fn auto_undo_reflected_system<T: Component + Reflect + FromReflect>(
             commands.entity(e).remove::<ChangedMarker<T>>();
 
             if let Some(prev_value) = storage.storage.get(&e) {
-                new_change.send(NewChange {
+                new_change.write(NewChange {
                     change: Arc::new(ReflectedComponentChange {
                         old_value: <T as FromReflect>::from_reflect(prev_value).unwrap(),
                         new_value: <T as FromReflect>::from_reflect(data.as_ref()).unwrap(),
@@ -1535,7 +1532,7 @@ mod tests {
         app.update();
 
         let test_id = app.world_mut().spawn_empty().id();
-        app.world_mut().send_event(NewChange {
+        app.world_mut().write_event(NewChange {
             change: Arc::new(AddedEntity { entity: test_id }),
         });
 
@@ -1560,7 +1557,7 @@ mod tests {
 
         assert!(app.world_mut().get_entity(test_id).is_ok());
 
-        app.world_mut().send_event(UndoRedo::Undo);
+        app.world_mut().write_event(UndoRedo::Undo);
 
         app.update();
         app.update();
@@ -1572,7 +1569,7 @@ mod tests {
         assert!(app.world_mut().get::<Name>(test_id).is_none());
         assert!(app.world_mut().get_entity(test_id).is_ok());
 
-        app.world_mut().send_event(UndoRedo::Undo);
+        app.world_mut().write_event(UndoRedo::Undo);
         app.update();
         app.update();
 
@@ -1589,10 +1586,10 @@ mod tests {
         let test_id_1 = app.world_mut().spawn(UndoMarker).id();
         let test_id_2 = app.world_mut().spawn(UndoMarker).id();
 
-        app.world_mut().send_event(NewChange {
+        app.world_mut().write_event(NewChange {
             change: Arc::new(AddedEntity { entity: test_id_1 }),
         });
-        app.world_mut().send_event(NewChange {
+        app.world_mut().write_event(NewChange {
             change: Arc::new(AddedEntity { entity: test_id_2 }),
         });
 
@@ -1606,14 +1603,14 @@ mod tests {
         app.cleanup();
 
         app.world_mut().entity_mut(test_id_1).despawn();
-        app.world_mut().send_event(NewChange {
+        app.world_mut().write_event(NewChange {
             change: Arc::new(RemovedEntity { entity: test_id_1 }),
         });
 
         app.update();
         app.update();
 
-        app.world_mut().send_event(UndoRedo::Undo);
+        app.world_mut().write_event(UndoRedo::Undo);
 
         app.update();
         app.update();
@@ -1624,6 +1621,6 @@ mod tests {
         assert_eq!(app.world_mut().entities().len(), 2);
 
         let mut query = app.world_mut().query::<&Children>();
-        assert!(query.get_single(app.world_mut()).is_ok());
+        assert!(query.single(app.world_mut()).is_ok());
     }
 }

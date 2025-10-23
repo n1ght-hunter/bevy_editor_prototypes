@@ -1,9 +1,27 @@
 # Bevy Editor Prototypes
 
 > [!WARNING]
-> This project is a prototype for a shippable Bevy Editor and is still in heavy development and testing. 
+> This project is a prototype for a shippable Bevy Editor and is still in heavy development and testing.
 > Everything you see is very much a work-in-progress. Read about what we're building in the [Design Book](https://bevyengine.github.io/bevy_editor_prototypes/)! or [Figma document].
 > To run just type the ```cargo run``` or ```cargo run --example``` command in the terminal of the `bevy_editor_prototypes` folder.
+
+Want to see what we have planned? Check out [Vision] for a high-level view on our goals, and [Architecture] for a summary of how we think it should all fit together.
+
+Want to help? See [Roadmap] for an up-to-date summary of the work that has been done and needs to be done to advance the project to the next phase.
+To avoid ballooning scope and ensure we can ship something useful and reasonably polished, please try your best to focus efforts on the next milestone that has yet to be completed, or standalone proof-of-concepts or design work for important open questions.
+
+*IMPORTANT*:
+
+When you open a folder with the launcher it will simply copy the template to the target location which references the editor's github repository and not your locally compiled editor. 
+
+Instead, for local editor dev use the below example for compiling/running changes:
+
+`cargo run --example simple_editor`
+
+[Vision]: https://bevyengine.github.io/bevy_editor_prototypes/vision.html
+[Architecture]: https://bevyengine.github.io/bevy_editor_prototypes/architecture.html
+[Roadmap]: https://bevyengine.github.io/bevy_editor_prototypes/roadmap.html
+
 
 ## Figma Designs
 

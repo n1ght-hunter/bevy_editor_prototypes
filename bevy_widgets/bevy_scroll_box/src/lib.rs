@@ -171,7 +171,7 @@ fn spawn_scroll_bar<'a>(
             ChildOf(scrollbar),
         ))
         .observe(
-            |trigger: Trigger<Pointer<Drag>>,
+            |trigger: On<Pointer<Drag>>,
              query_handle: Query<&ScrollBarHandle>,
              query_parent: Query<&ChildOf>,
              mut query_scrollbox: Query<(&mut ScrollBox, &RelativeCursorPosition, &Children)>,
@@ -181,7 +181,10 @@ fn spawn_scroll_bar<'a>(
                 let handle = query_handle.get(handle_entity).unwrap();
                 let scrollbox_entity = {
                     let scrollbar_parent = query_parent.get(handle_entity).unwrap();
-                    query_parent.get(scrollbar_parent.get()).unwrap().get()
+                    query_parent
+                        .get(scrollbar_parent.parent())
+                        .unwrap()
+                        .parent()
                 };
                 let (mut scrollbox, cursor_pos, scrollbox_children) =
                     query_scrollbox.get_mut(scrollbox_entity).unwrap();
@@ -199,13 +202,13 @@ fn spawn_scroll_bar<'a>(
                                 query_computed_node.get(handle_entity).unwrap().size().y
                                     / scrollbox_size
                             };
-                            scrollbox.position.offset_y =
+                            scrollbox.position.y =
                                 -((norm_cursor_pos.y - norm_handle_size / 2.0) * content_size);
-                            scrollbox.position.offset_y = scrollbox
+                            scrollbox.position.y = scrollbox
                                 .position
-                                .offset_y
+                                .y
                                 .clamp(-(content_size - (norm_handle_size * content_size)), 0.0);
-                            content_node.top = Val::Px(scrollbox.position.offset_y);
+                            content_node.top = Val::Px(scrollbox.position.y);
                         }
                         ScrollBarHandleDirection::Horizontal => {
                             let content_size = content_computed.size().x;
@@ -215,13 +218,13 @@ fn spawn_scroll_bar<'a>(
                                 query_computed_node.get(handle_entity).unwrap().size().x
                                     / scrollbox_size
                             };
-                            scrollbox.position.offset_x =
+                            scrollbox.position.x =
                                 -((norm_cursor_pos.x - norm_handle_size / 2.0) * content_size);
-                            scrollbox.position.offset_x = scrollbox
+                            scrollbox.position.x = scrollbox
                                 .position
-                                .offset_x
+                                .x
                                 .clamp(-(content_size - (norm_handle_size * content_size)), 0.0);
-                            content_node.left = Val::Px(scrollbox.position.offset_x);
+                            content_node.left = Val::Px(scrollbox.position.x);
                         }
                     }
                 }
@@ -244,7 +247,7 @@ fn on_scroll(
         {
             // Only scroll the ScrollBox that the cursor is over
             // TODO: Get the scrollbox with the highest z-index
-            if !cursor_pos.mouse_over() {
+            if !cursor_pos.cursor_over() {
                 continue;
             }
 
@@ -261,12 +264,12 @@ fn on_scroll(
 
             if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
                 let max_scroll = (content_sizes.x - scrollbox_sizes.x).max(0.0);
-                scrollbox.position.offset_x =
-                    (scrollbox.position.offset_x + scroll_delta).clamp(-max_scroll, 0.0);
+                scrollbox.position.x =
+                    (scrollbox.position.x + scroll_delta).clamp(-max_scroll, 0.0);
             } else {
                 let max_scroll = (content_sizes.y - scrollbox_sizes.y).max(0.);
-                scrollbox.position.offset_y =
-                    (scrollbox.position.offset_y + scroll_delta).clamp(-max_scroll, 0.0);
+                scrollbox.position.y =
+                    (scrollbox.position.y + scroll_delta).clamp(-max_scroll, 0.0);
             }
 
             return; // We only want to scroll 1 ScrollBox
@@ -284,7 +287,7 @@ fn update_scroll_box(
                 .first()
                 .expect("Scrollbox children 0 should be a ScrollBoxContent");
             let mut content_node = query_node.get_mut(*scroll_content).unwrap();
-            content_node.top = Val::Px(scrollbox.position.offset_y);
+            content_node.top = Val::Px(scrollbox.position.y);
         }
 
         if scrollbox.overflow.x == OverflowAxis::Scroll {
@@ -292,7 +295,7 @@ fn update_scroll_box(
                 .first()
                 .expect("Scrollbox children 0 should be a ScrollBoxContent");
             let mut content_node = query_node.get_mut(*scroll_content).unwrap();
-            content_node.left = Val::Px(scrollbox.position.offset_x);
+            content_node.left = Val::Px(scrollbox.position.x);
         }
     }
 }
@@ -326,7 +329,7 @@ fn update_scroll_bars(
                 (100.0, 0.0)
             } else {
                 let height = (scrollbox_height / content_height * 100.0).clamp(5.0, 100.0);
-                let pos = (-scrollbox.position.offset_y / content_height * 100.0).clamp(0.0, 100.0);
+                let pos = (-scrollbox.position.y / content_height * 100.0).clamp(0.0, 100.0);
                 (height, pos)
             };
 
@@ -367,7 +370,7 @@ fn update_scroll_bars(
                 (100.0, 0.0)
             } else {
                 let width = (scrollbox_width / content_width * 100.0).clamp(5.0, 100.0);
-                let pos = (-scrollbox.position.offset_x / content_width * 100.0).clamp(0.0, 100.0);
+                let pos = (-scrollbox.position.x / content_width * 100.0).clamp(0.0, 100.0);
                 (width, pos)
             };
 

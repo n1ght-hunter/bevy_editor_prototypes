@@ -2,16 +2,16 @@ use core::{any::TypeId, cell::RefCell, hash::BuildHasher, ops::Deref, str::FromS
 
 use bevy::{
     app::App,
-    asset::{io::Reader, Asset, AssetLoader, AssetServer, Handle, LoadContext},
+    asset::{Asset, AssetLoader, AssetServer, Handle, LoadContext, io::Reader},
     ecs::{
         reflect::AppTypeRegistry,
         world::{FromWorld, World},
     },
-    platform_support::hash::FixedState,
+    platform::hash::FixedState,
     reflect::{
-        DynamicEnum, DynamicStruct, DynamicTuple, DynamicTupleStruct, DynamicVariant, FromType,
-        NamedField, PartialReflect, Reflect, ReflectKind, StructInfo, StructVariantInfo, TypeInfo,
-        TypePath, TypeRegistration, TypeRegistry, TypeRegistryArc,
+        DynamicEnum, DynamicList, DynamicStruct, DynamicTuple, DynamicTupleStruct, DynamicVariant,
+        FromType, NamedField, PartialReflect, Reflect, ReflectKind, StructInfo, StructVariantInfo,
+        TypeInfo, TypePath, TypeRegistration, TypeRegistry, TypeRegistryArc,
     },
 };
 use thiserror::Error;
@@ -61,7 +61,7 @@ impl ReflectedBsn {
         let key = match &bsn.key {
             Some(BsnKey::Static(key)) => Some(key.clone()),
             Some(BsnKey::Dynamic(key)) => {
-                return Err(ReflectError::DynamicKeyNotSupported(key.clone()))
+                return Err(ReflectError::DynamicKeyNotSupported(key.clone()));
             }
             None => None,
         };
@@ -207,7 +207,7 @@ impl Clone for ReflectedValue {
     fn clone(&self) -> Self {
         Self {
             type_id: self.type_id,
-            instance: self.instance.as_ref().clone_value(),
+            instance: self.instance.as_ref().to_dynamic(),
         }
     }
 }
@@ -325,7 +325,7 @@ impl<'a, 'b> BsnReflector<'a, 'b> {
                 };
 
                 let Some(props_type) = self.registry.get(reflect_construct.props_type) else {
-                    return Err(ReflectError::UnknownType(format!("props for {}", path)));
+                    return Err(ReflectError::UnknownType(format!("props for {path}")));
                 };
 
                 let props = match props {
@@ -349,10 +349,9 @@ impl<'a, 'b> BsnReflector<'a, 'b> {
                     props,
                 })
             }
-            BsnComponent::BracedExpr(expr) => Err(ReflectError::ExpressionNotSupported(format!(
-                "{{{}}}",
-                expr
-            ))),
+            BsnComponent::BracedExpr(expr) => {
+                Err(ReflectError::ExpressionNotSupported(format!("{{{expr}}}",)))
+            }
         }
     }
 
@@ -363,22 +362,21 @@ impl<'a, 'b> BsnReflector<'a, 'b> {
     ) -> ReflectResult<Box<dyn PartialReflect>> {
         // HACK: Allows constructing Handles from asset paths in BSN assets by triggering loads during reflection.
         // This should be removed when we have an upstream Construct implementation for Handle.
-        if ty.type_path().starts_with("bevy_asset::handle::Handle<") && self.asset_loader.is_some()
+        if ty.type_path().starts_with("bevy_asset::handle::Handle<")
+            && self.asset_loader.is_some()
+            && let BsnProp::Props(BsnValue::String(asset_path)) = prop
         {
-            if let BsnProp::Props(BsnValue::String(asset_path)) = prop {
-                let Some(reflect_handle_load) = self
-                    .registry
-                    .get_type_data::<ReflectHandleLoad>(ty.type_id())
-                else {
-                    return Err(ReflectError::MissingTypeData(
-                        "ReflectHandleLoad".into(),
-                        ty.type_path().into(),
-                    ));
-                };
-                let handle =
-                    reflect_handle_load.load(asset_path, self.asset_loader.as_ref().unwrap());
-                return Ok(handle.into_partial_reflect());
-            }
+            let Some(reflect_handle_load) = self
+                .registry
+                .get_type_data::<ReflectHandleLoad>(ty.type_id())
+            else {
+                return Err(ReflectError::MissingTypeData(
+                    "ReflectHandleLoad".into(),
+                    ty.type_path().into(),
+                ));
+            };
+            let handle = reflect_handle_load.load(asset_path, self.asset_loader.as_ref().unwrap());
+            return Ok(handle.into_partial_reflect());
         }
 
         // This is fine : )
@@ -443,8 +441,9 @@ impl<'a, 'b> BsnReflector<'a, 'b> {
                 ty,
             ),
             BsnValue::Tuple(items) => self.reflect_tuple(items, ty),
+            BsnValue::List(items) => self.reflect_list(items, ty),
             _ => Err(ReflectError::UnexpectedType(
-                format!("{:?}", value),
+                format!("{value:?}"),
                 ty.type_path().into(),
             )),
         }
@@ -500,7 +499,7 @@ impl<'a, 'b> BsnReflector<'a, 'b> {
         let tuple_info = ty.as_tuple().unwrap();
         if tuple_info.field_len() != items.len() {
             return Err(ReflectError::UnexpectedType(
-                format!("{:?}", items),
+                format!("{items:?}"),
                 format!("Tuple with {} fields", tuple_info.field_len()),
             ));
         }
@@ -511,6 +510,22 @@ impl<'a, 'b> BsnReflector<'a, 'b> {
             dynamic_tuple.insert_boxed(self.reflect_value(item, ty)?.instance);
         }
         Ok(ReflectedValue::new(ty.type_id(), Box::new(dynamic_tuple)))
+    }
+
+    fn reflect_list(&self, items: &[BsnValue], ty: &TypeInfo) -> ReflectResult<ReflectedValue> {
+        if let Ok(list_info) = ty.as_list() {
+            let mut dynamic_list = DynamicList::default();
+            let item_type_info = list_info.item_info().expect("Expected typed list");
+            for item in items.iter() {
+                dynamic_list.push_box(self.reflect_value(item, item_type_info)?.instance);
+            }
+            Ok(ReflectedValue::new(ty.type_id(), Box::new(dynamic_list)))
+        } else {
+            Err(ReflectError::UnexpectedType(
+                format!("{items:?}"),
+                format!("{ty:?}"),
+            ))
+        }
     }
 
     fn reflect_path(&self, path: &str, ty: Option<&TypeInfo>) -> ReflectResult<ReflectedValue> {

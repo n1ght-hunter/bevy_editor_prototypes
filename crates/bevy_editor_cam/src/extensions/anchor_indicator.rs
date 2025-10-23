@@ -16,11 +16,11 @@ impl Plugin for AnchorIndicatorPlugin {
         app.add_systems(
             PostUpdate,
             draw_anchor
-                .after(TransformSystem::TransformPropagate)
-                .after(bevy::render::camera::CameraUpdateSystem),
+                .after(TransformSystems::Propagate)
+                .after(bevy::render::camera::CameraUpdateSystems),
         )
         .add_observer(
-            |trigger: Trigger<OnAdd, EditorCam>,
+            |trigger: On<Add, EditorCam>,
              mut commands: Commands,
              asset_server: Res<AssetServer>| {
                 let image = asset_server
@@ -45,16 +45,14 @@ impl Plugin for AnchorIndicatorPlugin {
             },
         )
         .add_observer(
-            |trigger: Trigger<OnRemove, AnchorRoot>,
+            |trigger: On<Remove, AnchorRoot>,
              mut commands: Commands,
              anchor_root_query: Query<&AnchorRoot>| {
                 if let Ok(anchor_root) = anchor_root_query.get(trigger.target()) {
                     commands.entity(anchor_root.0).despawn();
                 }
             },
-        )
-        .register_type::<AnchorIndicator>()
-        .register_type::<AnchorRoot>();
+        );
     }
 }
 

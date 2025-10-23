@@ -1,8 +1,6 @@
 use bevy::reflect::Tuple;
 
-use crate::utils::tuple_utils::TupleLikeInfo;
-
-use super::{ LoadStructure, StructureLoader};
+use super::{LoadStructure, tuple_utils::TupleLikeInfo};
 
 pub struct LoadTuple<'a> {
     pub tuple_info: &'a dyn TupleLikeInfo,

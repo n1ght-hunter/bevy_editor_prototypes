@@ -2,7 +2,7 @@ use crate::{AssetBrowserLocation, DirectoryContent, Entry};
 use bevy::{
     asset::io::AssetSourceBuilders,
     prelude::*,
-    tasks::{block_on, futures_lite::StreamExt, poll_once, IoTaskPool, Task},
+    tasks::{IoTaskPool, Task, block_on, futures_lite::StreamExt, poll_once},
 };
 
 #[derive(Component)]
@@ -21,7 +21,7 @@ pub(crate) fn poll_task(
     mut commands: Commands,
     mut task_query: Query<(Entity, &mut FetchDirectoryContentTask)>,
 ) {
-    let (task_entity, mut task) = task_query.single_mut();
+    let (task_entity, mut task) = task_query.single_mut().unwrap();
     if let Some(content) = block_on(poll_once(&mut task.0)) {
         commands.entity(task_entity).despawn();
         commands.insert_resource(content);

@@ -1,5 +1,6 @@
 //! Resizable, divider-able panes for Bevy.
 
+pub mod components;
 mod handlers;
 mod pane_drop_area;
 pub mod registry;
@@ -29,8 +30,9 @@ use crate::{
 /// Crate prelude.
 pub mod prelude {
     pub use crate::{
-        registry::{PaneAppExt, PaneStructure},
         PaneAreaNode, PaneContentNode, PaneHeaderNode,
+        components::*,
+        registry::{PaneAppExt, PaneStructure},
     };
 }
 
@@ -57,7 +59,7 @@ fn apply_size(
     parent_query: Query<&ChildOf>,
 ) {
     for (entity, size, mut style) in &mut query {
-        let parent = parent_query.get(entity).unwrap().get();
+        let parent = parent_query.get(entity).unwrap().parent();
         let Ok(e) = divider_query.get(parent) else {
             style.width = Val::Percent(100.);
             style.height = Val::Percent(100.);
@@ -102,7 +104,9 @@ fn setup(
             padding: UiRect::all(Val::Px(1.)),
             flex_grow: 1.,
             width: Val::Percent(100.),
-
+            height: Val::Percent(100.),
+            // Prevent children from expanding the height of this node.
+            min_height: Val::Px(0.),
             ..default()
         },
         theme.general.background_color,
@@ -152,11 +156,11 @@ fn cleanup_divider_single_child(
         size_query.get_mut(child).unwrap().0 = size;
 
         // Find the index of this divider among its siblings
-        let siblings = children_query.get(parent.get()).unwrap();
+        let siblings = children_query.get(parent.parent()).unwrap();
         let index = siblings.iter().position(|s| s == entity).unwrap();
 
         commands
-            .entity(parent.get())
+            .entity(parent.parent())
             .insert_children(index, &[child]);
         commands.entity(entity).despawn();
     }
@@ -187,42 +191,13 @@ struct PaneRootNode {
 }
 
 /// Node to denote the area of the Pane.
-#[derive(Component)]
+#[derive(Component, Clone, Default)]
 pub struct PaneAreaNode;
 
 /// Node to add widgets into the header of a Pane.
-#[derive(Component)]
+#[derive(Component, Clone, Default)]
 pub struct PaneHeaderNode;
 
 /// Node to denote the content space of the Pane.
-#[derive(Component)]
+#[derive(Component, Clone, Default)]
 pub struct PaneContentNode;
-
-/// Adds `insert_children` method to `EntityWorldMut` and `EntityCommands`.
-trait InsertChildrenExt {
-    /// Inserts the given children at the given index.
-    fn insert_children(&mut self, index: usize, children: &[Entity]);
-}
-
-impl InsertChildrenExt for EntityWorldMut<'_> {
-    fn insert_children(&mut self, index: usize, children: &[Entity]) {
-        let prev_children = self.take::<Children>().unwrap_or_default();
-        let (prev_left, prev_right) = prev_children.split_at(index);
-
-        let parent_id = self.id();
-        self.world_scope(|world| {
-            for child in prev_left.iter().chain(children).chain(prev_right) {
-                world.entity_mut(*child).insert(ChildOf(parent_id));
-            }
-        });
-    }
-}
-
-impl InsertChildrenExt for EntityCommands<'_> {
-    fn insert_children(&mut self, index: usize, children: &[Entity]) {
-        let new_children = children.to_vec();
-        self.queue(move |mut entity: EntityWorldMut| {
-            entity.insert_children(index, &new_children);
-        });
-    }
-}

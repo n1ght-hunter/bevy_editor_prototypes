@@ -3,7 +3,7 @@
 use bevy::log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::SystemTime};
-use templates::{copy_template, Templates};
+use templates::{Templates, copy_template};
 
 mod cache;
 pub mod templates;
@@ -122,19 +122,14 @@ pub fn run_project(project: &ProjectInfo) -> std::io::Result<()> {
         .current_dir(&project.path)
         .args(["/C", "cargo", "run"])
         .spawn()
-        .map_err(|error| std::io::Error::other(format!("Failed to run project: {}", error)))?;
+        .map_err(|error| std::io::Error::other(format!("Failed to run project: {error}")))?;
 
     #[cfg(not(target_os = "windows"))]
     std::process::Command::new("sh")
         .current_dir(&project.path)
         .args(["-c", "cargo run"])
         .spawn()
-        .map_err(|error| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to run project: {}", error),
-            )
-        })?;
+        .map_err(|error| std::io::Error::other(format!("Failed to run project: {error}")))?;
 
     info!("Project started successfully");
     Ok(())

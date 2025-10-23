@@ -1,6 +1,10 @@
 //! Renders two cameras to the same window to accomplish "split screen".
 
-use bevy::{prelude::*, render::camera::Viewport, window::WindowResized};
+use bevy::{
+    prelude::*,
+    render::{camera::Viewport, view::Hdr},
+    window::WindowResized,
+};
 use bevy_editor_cam::prelude::*;
 
 fn main() {
@@ -21,10 +25,8 @@ fn setup(
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(0.0, 2.0, -1.0).looking_at(Vec3::ZERO, Vec3::Y),
-        Camera {
-            hdr: true,
-            ..default()
-        },
+        Camera::default(),
+        Hdr,
         EditorCam::default(),
         LeftCamera,
     ));
@@ -36,11 +38,11 @@ fn setup(
         Camera {
             // Renders the right camera after the left camera, which has a default priority of 0
             order: 10,
-            hdr: true,
             // don't clear on the second camera because the first camera already cleared the window
             clear_color: ClearColorConfig::None,
             ..default()
         },
+        Hdr,
         Projection::Orthographic(OrthographicProjection {
             scale: 0.01,
             ..OrthographicProjection::default_3d()
@@ -85,7 +87,7 @@ fn set_camera_viewports(
     // A resize_event is sent when the window is first created, allowing us to reuse this system for initial setup.
     for resize_event in resize_events.read() {
         let window = windows.get(resize_event.window).unwrap();
-        let mut left_camera = left_camera.single_mut();
+        let mut left_camera = left_camera.single_mut().unwrap();
         left_camera.viewport = Some(Viewport {
             physical_position: UVec2::new(0, 0),
             physical_size: UVec2::new(
@@ -95,7 +97,7 @@ fn set_camera_viewports(
             ..default()
         });
 
-        let mut right_camera = right_camera.single_mut();
+        let mut right_camera = right_camera.single_mut().unwrap();
         right_camera.viewport = Some(Viewport {
             physical_position: UVec2::new(window.resolution.physical_width() / 2, 0),
             physical_size: UVec2::new(

@@ -1,18 +1,15 @@
 use alloc::borrow::Cow;
 
 use bevy::{
-    ecs::component::{ComponentHooks, Immutable, StorageType},
+    ecs::{
+        component::{Immutable, StorageType},
+        lifecycle::ComponentHook,
+    },
     prelude::*,
     text::{FontSmoothing, LineHeight},
 };
 
 use crate::*;
-
-pub(crate) fn register_construct_impls(app: &mut App) {
-    app.register_type::<ConstructEntity>();
-    app.register_type::<ConstructTextFont>();
-    app.register_type::<ConstructTextFontProps>();
-}
 
 /// Constructable asset handle (because [`Handle<T>`] implements Default in Bevy right now)
 #[derive(Deref, DerefMut, Clone, Reflect, Debug)]
@@ -111,13 +108,13 @@ impl Construct for ConstructEntity {
                     Some((entity, _)) => {
                         if matching_entities.next().is_some() {
                             return Err(ConstructError::InvalidProps {
-                                message: format!("multiple entities with name '{}'", name).into(),
+                                message: format!("multiple entities with name '{name}'").into(),
                             });
                         }
                         Ok(ConstructEntity(entity))
                     }
                     None => Err(ConstructError::InvalidProps {
-                        message: format!("no entity with name '{}'", name).into(),
+                        message: format!("no entity with name '{name}'").into(),
                     }),
                 }
             }
@@ -184,8 +181,8 @@ impl Component for ConstructTextFont {
 
     type Mutability = Immutable;
 
-    fn register_component_hooks(hooks: &mut ComponentHooks) {
-        hooks.on_insert(|mut world, context| {
+    fn on_add() -> Option<ComponentHook> {
+        Some(|mut world, context| {
             let constructable = world
                 .get::<ConstructTextFont>(context.entity)
                 .unwrap()
@@ -196,11 +193,14 @@ impl Component for ConstructTextFont {
                 font_smoothing: constructable.font_smoothing,
                 line_height: constructable.line_height,
             });
-        });
-        hooks.on_remove(|mut world, context| {
-            if let Some(mut entity) = world.commands().get_entity(context.entity) {
+        })
+    }
+
+    fn on_remove() -> Option<ComponentHook> {
+        Some(|mut world, context| {
+            if let Ok(mut entity) = world.commands().get_entity(context.entity) {
                 entity.remove::<TextFont>();
             }
-        });
+        })
     }
 }

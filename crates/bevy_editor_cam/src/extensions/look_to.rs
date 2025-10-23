@@ -5,9 +5,9 @@ use std::{f32::consts::PI, time::Duration};
 
 use bevy::app::prelude::*;
 use bevy::ecs::prelude::*;
-use bevy::math::{prelude::*, DQuat, DVec3};
-use bevy::platform_support::collections::HashMap;
-use bevy::platform_support::time::Instant;
+use bevy::math::{DQuat, DVec3, prelude::*};
+use bevy::platform::collections::HashMap;
+use bevy::platform::time::Instant;
 use bevy::reflect::prelude::*;
 use bevy::transform::prelude::*;
 use bevy::window::RequestRedraw;
@@ -25,14 +25,13 @@ impl Plugin for LookToPlugin {
                 PreUpdate,
                 LookTo::update.before(EditorCam::update_camera_positions),
             )
-            .add_systems(PostUpdate, LookToTrigger::receive) // In PostUpdate so we don't miss users sending this in Update. LookTo::update will catch the changes next frame.
-            .register_type::<LookTo>();
+            .add_systems(PostUpdate, LookToTrigger::receive); // In PostUpdate so we don't miss users sending this in Update. LookTo::update will catch the changes next frame.
     }
 }
 
 /// Send this event to rotate the camera about its anchor until it is looking in the given direction
 /// with the given up direction. Animation speed is configured with the [`LookTo`] resource.
-#[derive(Debug, Event)]
+#[derive(Debug, Event, BufferedEvent)]
 pub struct LookToTrigger {
     /// The new direction to face.
     pub target_facing_direction: Dir3,
@@ -103,7 +102,7 @@ impl LookToTrigger {
             let Ok((mut controller, transform)) = cameras.get_mut(event.camera) else {
                 continue;
             };
-            redraw.send(RequestRedraw);
+            redraw.write(RequestRedraw);
 
             state
                 .map
@@ -156,7 +155,7 @@ impl Default for LookTo {
     fn default() -> Self {
         Self {
             animation_duration: Duration::from_millis(400),
-            animation_curve: CubicSegment::new_bezier((0.25, 0.0), (0.25, 1.0)),
+            animation_curve: CubicSegment::new_bezier_easing((0.25, 0.0), (0.25, 1.0)),
             map: Default::default(),
         }
     }
@@ -226,7 +225,7 @@ impl LookTo {
             if progress_t >= 1.0 {
                 *complete = true;
             }
-            redraw.send(RequestRedraw);
+            redraw.write(RequestRedraw);
         }
         state.map.retain(|_, v| !v.complete);
     }

@@ -155,7 +155,7 @@ fn camera_zoom(
         return;
     }
 
-    let Ok(window) = primary_window.get_single() else {
+    let Ok(window) = primary_window.single() else {
         // Log an error message once here?
         return;
     };
@@ -165,7 +165,7 @@ fn camera_zoom(
             continue;
         }
 
-        let Projection::Orthographic(ref mut projection) = projection.as_mut() else {
+        let Projection::Orthographic(projection) = projection.as_mut() else {
             panic!("EditorCamera2d requires an Orthographic projection");
         };
 
@@ -232,7 +232,7 @@ fn camera_pan(
     // See https://github.com/johanhelsing/bevy_pancam/blob/main/src/lib.rs#L279
     // for why we are using the mouse position instead of the mouse delta (from
     // the MouseMotion event).
-    let Ok(window) = primary_window.get_single() else {
+    let Ok(window) = primary_window.single() else {
         // Log an error message once here?
         return;
     };

@@ -1,13 +1,13 @@
 use std::borrow::Cow;
 
 use bevy::{
-    asset::{load_internal_asset, weak_handle},
+    asset::{load_internal_asset, uuid_handle},
     core_pipeline::{core_2d::Transparent2d, core_3d::Transparent3d},
     ecs::{
         query::ROQueryItem,
         system::{
-            lifetimeless::{Read, SRes},
             SystemParamItem,
+            lifetimeless::{Read, SRes},
         },
     },
     image::BevyDefault,
@@ -15,29 +15,29 @@ use bevy::{
     pbr::MeshPipelineKey,
     prelude::*,
     render::{
+        Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
         mesh::PrimitiveTopology,
         render_phase::{
             AddRenderCommand, DrawFunctions, PhaseItem, PhaseItemExtraIndex, RenderCommand,
             RenderCommandResult, SetItemPipeline, ViewSortedRenderPhases,
         },
         render_resource::{
-            binding_types::uniform_buffer, BindGroup, BindGroupEntries, BindGroupLayout,
-            BindGroupLayoutEntries, BlendState, ColorTargetState, ColorWrites, CompareFunction,
-            DepthBiasState, DepthStencilState, DynamicUniformBuffer, FragmentState,
-            MultisampleState, PipelineCache, PolygonMode, PrimitiveState, RenderPipelineDescriptor,
-            ShaderStages, ShaderType, SpecializedRenderPipeline, SpecializedRenderPipelines,
-            StencilFaceState, StencilState, TextureFormat, VertexState,
+            BindGroup, BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, BlendState,
+            ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState,
+            DynamicUniformBuffer, FragmentState, MultisampleState, PipelineCache, PolygonMode,
+            PrimitiveState, RenderPipelineDescriptor, ShaderStages, ShaderType,
+            SpecializedRenderPipeline, SpecializedRenderPipelines, StencilFaceState, StencilState,
+            TextureFormat, VertexState, binding_types::uniform_buffer,
         },
         renderer::{RenderDevice, RenderQueue},
         sync_world::RenderEntity,
         view::{ExtractedView, RenderVisibleEntities, ViewTarget, VisibleEntities},
-        Extract, ExtractSchedule, Render, RenderApp, RenderSet,
     },
 };
 
 use crate::InfiniteGridSettings;
 
-const GRID_SHADER_HANDLE: Handle<Shader> = weak_handle!("7cd38dd1-d707-481e-b38c-0eccb706e629");
+const GRID_SHADER_HANDLE: Handle<Shader> = uuid_handle!("7cd38dd1-d707-481e-b38c-0eccb706e629");
 
 pub fn render_app_builder(app: &mut App) {
     load_internal_asset!(app, GRID_SHADER_HANDLE, "grid.wgsl", Shader::from_wgsl);
@@ -60,7 +60,7 @@ pub fn render_app_builder(app: &mut App) {
         .add_systems(
             Render,
             (prepare_infinite_grids, prepare_grid_view_uniforms)
-                .in_set(RenderSet::PrepareResources),
+                .in_set(RenderSystems::PrepareResources),
         )
         .add_systems(
             Render,
@@ -68,9 +68,9 @@ pub fn render_app_builder(app: &mut App) {
                 prepare_bind_groups_for_infinite_grids,
                 prepare_grid_view_bind_groups,
             )
-                .in_set(RenderSet::PrepareBindGroups),
+                .in_set(RenderSystems::PrepareBindGroups),
         )
-        .add_systems(Render, queue_infinite_grids.in_set(RenderSet::Queue));
+        .add_systems(Render, queue_infinite_grids.in_set(RenderSystems::Queue));
 }
 
 #[derive(Component)]
@@ -174,8 +174,8 @@ impl<const I: usize, P: PhaseItem> RenderCommand<P> for SetGridViewBindGroup<I> 
     #[inline]
     fn render<'w>(
         _item: &P,
-        (view_uniform, bind_group): ROQueryItem<'w, Self::ViewQuery>,
-        _entity: Option<ROQueryItem<'w, Self::ItemQuery>>,
+        (view_uniform, bind_group): ROQueryItem<'w, '_, Self::ViewQuery>,
+        _entity: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         _param: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut bevy::render::render_phase::TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
@@ -194,8 +194,8 @@ impl<const I: usize, P: PhaseItem> RenderCommand<P> for SetInfiniteGridBindGroup
     #[inline]
     fn render<'w>(
         _item: &P,
-        camera_settings_offset: ROQueryItem<'w, Self::ViewQuery>,
-        base_offsets: Option<ROQueryItem<'w, Self::ItemQuery>>,
+        camera_settings_offset: ROQueryItem<'w, '_, Self::ViewQuery>,
+        base_offsets: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         bind_group: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut bevy::render::render_phase::TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
@@ -226,8 +226,8 @@ impl<P: PhaseItem> RenderCommand<P> for FinishDrawInfiniteGrid {
     #[inline]
     fn render<'w>(
         _item: &P,
-        _view: ROQueryItem<'w, Self::ViewQuery>,
-        _entity: Option<ROQueryItem<'w, Self::ItemQuery>>,
+        _view: ROQueryItem<'w, '_, Self::ViewQuery>,
+        _entity: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         _param: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut bevy::render::render_phase::TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
@@ -246,7 +246,7 @@ fn prepare_grid_view_uniforms(
     view_uniforms.uniforms.clear();
     for (entity, camera) in views.iter() {
         let projection = camera.clip_from_view;
-        let view = camera.world_from_view.compute_matrix();
+        let view = camera.world_from_view.to_matrix();
         let inverse_view = view.inverse();
         commands.entity(entity).insert(GridViewUniformOffset {
             offset: view_uniforms.uniforms.push(&GridViewUniform {
@@ -311,7 +311,7 @@ fn extract_infinite_grids(
             )
         })
         .collect();
-    commands.insert_or_spawn_batch(extracted);
+    commands.try_insert_batch(extracted);
 }
 
 fn extract_per_camera_settings(
@@ -322,7 +322,7 @@ fn extract_per_camera_settings(
         .iter()
         .map(|(entity, settings)| (**entity, *settings))
         .collect();
-    commands.insert_or_spawn_batch(extracted);
+    commands.try_insert_batch(extracted);
 }
 
 fn prepare_infinite_grids(
@@ -438,6 +438,7 @@ fn queue_infinite_grids(
                     extra_index: PhaseItemExtraIndex::None,
                     sort_key: FloatOrd(f32::NEG_INFINITY),
                     indexed: true,
+                    extracted_index: 0,
                 });
             }
             if !infinite_grids
@@ -530,7 +531,7 @@ impl SpecializedRenderPipeline for InfiniteGridPipeline {
             vertex: VertexState {
                 shader: GRID_SHADER_HANDLE,
                 shader_defs: vec![],
-                entry_point: Cow::Borrowed("vertex"),
+                entry_point: Some(Cow::Borrowed("vertex")),
                 buffers: vec![],
             },
             primitive: PrimitiveState {
@@ -566,7 +567,7 @@ impl SpecializedRenderPipeline for InfiniteGridPipeline {
             fragment: Some(FragmentState {
                 shader: GRID_SHADER_HANDLE,
                 shader_defs: vec![],
-                entry_point: Cow::Borrowed("fragment"),
+                entry_point: Some(Cow::Borrowed("fragment")),
                 targets: vec![Some(ColorTargetState {
                     format,
                     blend: Some(BlendState::ALPHA_BLENDING),

@@ -1,4 +1,4 @@
-use bevy::{prelude::*, window::SystemCursorIcon, winit::cursor::CursorIcon};
+use bevy::{feathers::cursor::EntityCursor, prelude::*, window::SystemCursorIcon};
 use bevy_editor_styles::Theme;
 
 use crate::ContextMenu;
@@ -55,41 +55,22 @@ pub(crate) fn spawn_option<'a>(
                 ..default()
             },
             theme.context_menu.option_border_radius,
+            EntityCursor::System(SystemCursorIcon::Pointer),
         ))
         .observe(
-            |trigger: Trigger<Pointer<Over>>,
+            |trigger: On<Pointer<Over>>,
              theme: Res<Theme>,
              mut query: Query<&mut BackgroundColor>| {
                 *query.get_mut(trigger.target()).unwrap() = theme.context_menu.hover_color;
             },
         )
         .observe(
-            |trigger: Trigger<Pointer<Out>>, mut query: Query<&mut BackgroundColor>| {
+            |trigger: On<Pointer<Out>>, mut query: Query<&mut BackgroundColor>| {
                 query.get_mut(trigger.target()).unwrap().0 = Color::NONE;
             },
         )
         .observe(
-            move |_trigger: Trigger<Pointer<Over>>,
-                  window_query: Query<Entity, With<Window>>,
-                  mut commands: Commands| {
-                let window = window_query.single();
-                commands
-                    .entity(window)
-                    .insert(CursorIcon::System(SystemCursorIcon::Pointer));
-            },
-        )
-        .observe(
-            |_trigger: Trigger<Pointer<Out>>,
-             window_query: Query<Entity, With<Window>>,
-             mut commands: Commands| {
-                let window = window_query.single();
-                commands
-                    .entity(window)
-                    .insert(CursorIcon::System(SystemCursorIcon::Default));
-            },
-        )
-        .observe(
-            move |trigger: Trigger<Pointer<Released>>,
+            move |trigger: On<Pointer<Release>>,
                   mut commands: Commands,
                   child_of_query: Query<&ChildOf>,
                   mut query: Query<&mut ContextMenu>| {

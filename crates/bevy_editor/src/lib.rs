@@ -11,14 +11,28 @@
 //!   which transforms the user's application into an editor that runs their game.
 //! - Finally, it will be a standalone application that communicates with a running Bevy game via the Bevy Remote Protocol.
 
+use std::f32::consts::TAU;
+use std::time::Duration;
+
 use bevy::app::App as BevyApp;
+use bevy::asset::UnapprovedPathMode;
+use bevy::color::palettes::tailwind;
 use bevy::prelude::*;
+use bevy::{
+    core_widgets::CoreWidgetsPlugins,
+    feathers::{FeathersPlugin, dark_theme::create_dark_theme, theme::UiTheme},
+    input_focus::{InputDispatchPlugin, tab_navigation::TabNavigationPlugin},
+};
 // Re-export Bevy for project use
 pub use bevy;
 
+use bevy::winit::{UpdateMode, WinitSettings};
 use bevy_context_menu::ContextMenuPlugin;
 use bevy_editor_core::EditorCorePlugin;
+use bevy_editor_core::selection::Selectable;
 use bevy_editor_styles::StylesPlugin;
+use bevy_toolbar::ActiveTool;
+use bevy_transform_gizmos::{GizmoTransformable, TransformGizmoPlugin};
 
 // Panes
 use bevy_2d_viewport::Viewport2dPanePlugin;
@@ -36,7 +50,10 @@ pub struct RuntimePlugin;
 
 impl Plugin for RuntimePlugin {
     fn build(&self, bevy_app: &mut BevyApp) {
-        bevy_app.add_plugins(DefaultPlugins);
+        bevy_app.add_plugins(DefaultPlugins.set(AssetPlugin {
+            unapproved_path_mode: UnapprovedPathMode::Deny,
+            ..default()
+        }));
     }
 }
 
@@ -47,7 +64,7 @@ impl Plugin for EditorPlugin {
     fn build(&self, bevy_app: &mut BevyApp) {
         // Update/register this project to the editor project list
         project::update_project_info();
-
+        info!("Loading Bevy Editor");
         bevy_app
             .add_plugins((
                 EditorCorePlugin,
@@ -58,7 +75,19 @@ impl Plugin for EditorPlugin {
                 ui::EditorUIPlugin,
                 AssetBrowserPanePlugin,
                 LoadGltfPlugin,
+                MeshPickingPlugin,
+                TransformGizmoPlugin,
+                CoreWidgetsPlugins,
+                InputDispatchPlugin,
+                TabNavigationPlugin,
+                FeathersPlugin,
             ))
+            .insert_resource(WinitSettings {
+                focused_mode: UpdateMode::reactive(Duration::from_secs_f64(1.0 / 60.0)),
+                unfocused_mode: UpdateMode::reactive_low_power(Duration::from_secs(1)),
+            })
+            .insert_resource(UiTheme(create_dark_theme()))
+            .init_resource::<ActiveTool>()
             .add_systems(Startup, dummy_setup);
     }
 }
@@ -93,17 +122,24 @@ impl App {
 fn dummy_setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials_2d: ResMut<Assets<ColorMaterial>>,
     mut materials_3d: ResMut<Assets<StandardMaterial>>,
 ) {
     commands.spawn((
-        Mesh2d(meshes.add(Circle::new(50.0))),
-        MeshMaterial2d(materials_2d.add(Color::WHITE)),
+        Mesh3d(meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(2.5)))),
+        MeshMaterial3d(materials_3d.add(Color::WHITE)),
+        Name::new("Plane"),
+        Selectable,
+        GizmoTransformable,
     ));
 
     commands.spawn((
-        Mesh3d(meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(1.5)))),
-        MeshMaterial3d(materials_3d.add(Color::WHITE)),
+        Mesh3d(meshes.add(Cuboid::from_size(Vec3::splat(1.)))),
+        MeshMaterial3d(materials_3d.add(Color::from(tailwind::BLUE_500))),
+        Transform::from_translation(vec3(1.1, 0.5, -1.3))
+            .with_rotation(Quat::from_rotation_y(TAU * 0.05)),
+        Name::new("Box"),
+        Selectable,
+        GizmoTransformable,
     ));
 
     commands.spawn((
@@ -111,6 +147,8 @@ fn dummy_setup(
             shadows_enabled: true,
             ..default()
         },
-        Transform::default().looking_to(Vec3::NEG_ONE, Vec3::Y),
+        Transform::default().looking_to(vec3(-1., -1., 1.), Vec3::Y),
+        GizmoTransformable,
+        Name::new("DirectionalLight"),
     ));
 }

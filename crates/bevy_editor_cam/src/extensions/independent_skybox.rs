@@ -7,11 +7,14 @@
 
 use bevy::app::prelude::*;
 use bevy::asset::Handle;
-use bevy::core_pipeline::{prelude::*, Skybox};
+use bevy::core_pipeline::{Skybox, prelude::*};
 use bevy::ecs::prelude::*;
 use bevy::image::Image;
 use bevy::reflect::prelude::*;
-use bevy::render::{prelude::*, view::RenderLayers};
+use bevy::render::{
+    prelude::*,
+    view::{Hdr, RenderLayers},
+};
 use bevy::transform::prelude::*;
 
 /// See the [module](self) docs.
@@ -28,8 +31,7 @@ impl Plugin for IndependentSkyboxPlugin {
                 IndependentSkyboxCamera::update,
             )
                 .chain(),
-        )
-        .register_type::<IndependentSkybox>();
+        );
     }
 }
 
@@ -65,7 +67,7 @@ impl IndependentSkybox {
 impl Default for IndependentSkybox {
     fn default() -> Self {
         Self {
-            skybox: Default::default(),
+            skybox: Handle::default(),
             brightness: 500.0,
             skybox_cam_order_offset: -1_000,
             fov: Default::default(),
@@ -93,6 +95,7 @@ impl Default for SkyboxFov {
 /// Used to track the camera that is used to render a skybox, using the [`IndependentSkybox`]
 /// component settings placed on a camera.
 #[derive(Component)]
+#[require(Hdr)]
 pub struct IndependentSkyboxCamera {
     /// The camera that this skybox camera is observing.
     driven_by: Entity,
@@ -115,14 +118,12 @@ impl IndependentSkyboxCamera {
             })
         {
             camera.clear_color = ClearColorConfig::None;
-            camera.hdr = true;
 
             let entity = commands
                 .spawn((
                     Camera3d::default(),
                     Camera {
                         order: camera.order + editor_without_skybox.skybox_cam_order_offset,
-                        hdr: true,
                         clear_color: ClearColorConfig::None,
                         ..Default::default()
                     },

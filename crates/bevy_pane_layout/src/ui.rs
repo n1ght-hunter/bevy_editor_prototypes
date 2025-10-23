@@ -1,11 +1,25 @@
-use bevy::{prelude::*, window::SystemCursorIcon, winit::cursor::CursorIcon};
+use bevy::{feathers::cursor::EntityCursor, prelude::*, window::SystemCursorIcon};
 use bevy_context_menu::{ContextMenu, ContextMenuOption};
-use bevy_editor_styles::Theme;
+use bevy_editor_styles::{Theme, icons};
 
 use crate::{
-    handlers::*, registry::PaneStructure, Divider, DragState, PaneAreaNode, PaneContentNode,
-    PaneHeaderNode, PaneRootNode, ResizeHandle, Size,
+    Divider, DragState, PaneAreaNode, PaneContentNode, PaneHeaderNode, PaneRootNode, ResizeHandle,
+    Size, handlers::*, registry::PaneStructure,
 };
+
+pub fn header_context_menu() -> ContextMenu {
+    ContextMenu::new([
+        ContextMenuOption::new("Close", |mut commands, entity| {
+            commands.run_system_cached_with(remove_pane, entity);
+        }),
+        ContextMenuOption::new("Split - Horizontal", |mut commands, entity| {
+            commands.run_system_cached_with(split_pane, (entity, false));
+        }),
+        ContextMenuOption::new("Split - Vertical", |mut commands, entity| {
+            commands.run_system_cached_with(split_pane, (entity, true));
+        }),
+    ])
+}
 
 pub(crate) fn spawn_pane<'a>(
     commands: &'a mut Commands,
@@ -51,67 +65,50 @@ pub(crate) fn spawn_pane<'a>(
                 width: Val::Percent(100.),
                 height: Val::Px(27.),
                 align_items: AlignItems::Center,
+                justify_content: JustifyContent::SpaceBetween,
                 flex_shrink: 0.,
                 ..default()
             },
             theme.pane.header_background_color,
             theme.pane.header_border_radius,
-            ContextMenu::new([
-                ContextMenuOption::new("Close", |mut commands, entity| {
-                    commands.run_system_cached_with(remove_pane, entity);
-                }),
-                ContextMenuOption::new("Split - Horizontal", |mut commands, entity| {
-                    commands.run_system_cached_with(split_pane, (entity, false));
-                }),
-                ContextMenuOption::new("Split - Vertical", |mut commands, entity| {
-                    commands.run_system_cached_with(split_pane, (entity, true));
-                }),
-            ]),
+            header_context_menu(),
             PaneHeaderNode,
             ChildOf(area),
+            EntityCursor::System(SystemCursorIcon::Pointer),
         ))
-        .observe(
-            move |_trigger: Trigger<Pointer<Move>>,
-                  window_query: Query<Entity, With<Window>>,
-                  mut commands: Commands| {
-                let window = window_query.single();
-                commands
-                    .entity(window)
-                    .insert(CursorIcon::System(SystemCursorIcon::Pointer));
-            },
-        )
-        .observe(
-            |_trigger: Trigger<Pointer<Out>>,
-             window_query: Query<Entity, With<Window>>,
-             mut commands: Commands| {
-                let window = window_query.single();
-                commands
-                    .entity(window)
-                    .insert(CursorIcon::System(SystemCursorIcon::Default));
-            },
-        )
         .with_children(|parent| {
-            // Drop down button for selecting the pane type.
-            // Once a drop down menu is implemented, this will have that added.
-            parent.spawn((
-                Node {
-                    width: Val::Px(31.),
-                    height: Val::Px(19.),
-                    margin: UiRect::right(Val::Px(5.)),
+            parent
+                .spawn(Node {
+                    align_items: AlignItems::Center,
+                    flex_shrink: 0.0,
                     ..default()
-                },
-                theme.button.background_color,
-                theme.button.border_radius,
-            ));
+                })
+                .with_children(|parent| {
+                    // Drop down button for selecting the pane type.
+                    // Once a drop down menu is implemented, this will have that added.
+                    parent.spawn((
+                        Text::new(icons::CHEVRON_DOWN),
+                        TextFont {
+                            font: theme.icon.font.clone(),
+                            font_size: 16.0,
+                            ..default()
+                        },
+                    ));
+                    parent.spawn((
+                        Text::new(format!(" {name}")),
+                        TextFont {
+                            font: theme.text.font.clone(),
+                            font_size: 14.0,
+                            ..default()
+                        },
+                    ));
+                });
+
             parent.spawn((
-                Text::new(name),
+                Text::new(icons::GRIP_VERTICAL),
                 TextFont {
-                    font: theme.text.font.clone(),
-                    font_size: 14.,
-                    ..default()
-                },
-                Node {
-                    flex_shrink: 0.,
+                    font: theme.icon.font.clone(),
+                    font_size: 16.0,
                     ..default()
                 },
             ));
@@ -185,6 +182,10 @@ pub(crate) fn spawn_resize_handle<'a>(
         ZIndex(3),
     ));
     // Add the Resize
+    let cursor_icon = match divider_parent {
+        Divider::Horizontal => SystemCursorIcon::EwResize,
+        Divider::Vertical => SystemCursorIcon::NsResize,
+    };
     ec.with_child((
         Node {
             width: match divider_parent {
@@ -198,9 +199,10 @@ pub(crate) fn spawn_resize_handle<'a>(
             ..default()
         },
         ResizeHandle,
+        EntityCursor::System(cursor_icon),
     ))
     .observe(
-        move |trigger: Trigger<Pointer<DragStart>>,
+        move |trigger: On<Pointer<DragStart>>,
               mut drag_state: ResMut<DragState>,
               parent_query: Query<&ChildOf>,
               children_query: Query<&Children>,
@@ -213,7 +215,7 @@ pub(crate) fn spawn_resize_handle<'a>(
             drag_state.is_dragging = true;
 
             let target = trigger.target();
-            let parent = parent_query.get(target).unwrap().get();
+            let parent = parent_query.get(target).unwrap().parent();
 
             let parent_node_size = computed_node_query.get(parent).unwrap().size();
             let parent_node_size = match divider_parent {
@@ -236,7 +238,7 @@ pub(crate) fn spawn_resize_handle<'a>(
         },
     )
     .observe(
-        move |trigger: Trigger<Pointer<Drag>>,
+        move |trigger: On<Pointer<Drag>>,
               mut drag_state: ResMut<DragState>,
               parent_query: Query<&ChildOf>,
               children_query: Query<&Children>,
@@ -246,7 +248,7 @@ pub(crate) fn spawn_resize_handle<'a>(
             }
 
             let target = trigger.target();
-            let parent = parent_query.get(target).unwrap().get();
+            let parent = parent_query.get(target).unwrap().parent();
             let siblings = children_query.get(parent).unwrap();
             // Find the index of this handle among its siblings
             let index = siblings.iter().position(|entity| entity == target).unwrap();
@@ -272,38 +274,15 @@ pub(crate) fn spawn_resize_handle<'a>(
         },
     )
     .observe(
-        move |_trigger: Trigger<Pointer<DragEnd>>, mut drag_state: ResMut<DragState>| {
+        move |_trigger: On<Pointer<DragEnd>>, mut drag_state: ResMut<DragState>| {
             drag_state.is_dragging = false;
             drag_state.offset = 0.;
         },
     )
     .observe(
-        |_trigger: Trigger<Pointer<Cancel>>, mut drag_state: ResMut<DragState>| {
+        |_trigger: On<Pointer<Cancel>>, mut drag_state: ResMut<DragState>| {
             drag_state.is_dragging = false;
             drag_state.offset = 0.;
-        },
-    )
-    .observe(
-        move |_trigger: Trigger<Pointer<Move>>,
-              window_query: Query<Entity, With<Window>>,
-              mut commands: Commands| {
-            let window = window_query.single();
-            commands
-                .entity(window)
-                .insert(CursorIcon::System(match divider_parent {
-                    Divider::Horizontal => SystemCursorIcon::EwResize,
-                    Divider::Vertical => SystemCursorIcon::NsResize,
-                }));
-        },
-    )
-    .observe(
-        |_trigger: Trigger<Pointer<Out>>,
-         window_query: Query<Entity, With<Window>>,
-         mut commands: Commands| {
-            let window = window_query.single();
-            commands
-                .entity(window)
-                .insert(CursorIcon::System(SystemCursorIcon::Default));
         },
     );
     ec
